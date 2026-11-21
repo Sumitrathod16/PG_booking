@@ -1,0 +1,6 @@
+{
+  "name": "PG Booking",
+  "description": "Paying guest accommodation marketplace with Tenant discovery, Owner property and inventory management, Admin verification, and booking workflows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

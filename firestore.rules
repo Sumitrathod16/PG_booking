@@ -1,0 +1,563 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        ('email' in request.auth.token &&
+         'email_verified' in request.auth.token &&
+         request.auth.token.email == 'sr8705589@gmail.com' &&
+         request.auth.token.email_verified == true)
+      );
+    }
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+    function isValidFutureOrNowTimestamp(ts) {
+      return ts is timestamp;
+    }
+    function isValidStringList(arr, maxLen) {
+      return arr is list && arr.size() <= maxLen && (arr.size() == 0 || (arr[0] is string && arr[0].size() <= 120));
+    }
+
+    // --- Entity Validation Helpers ---
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+             data.activeRole in ['TENANT', 'OWNER'] &&
+             (!('phone' in data) || data.phone == null || (data.phone is string && data.phone.size() <= 20)) &&
+             (!('city' in data) || data.city == null || (data.city is string && data.city.size() <= 60)) &&
+             (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 500));
+    }
+
+    function isValidFavorite(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.propertyId is string && isValidId(data.propertyId) &&
+             data.propertyName is string && data.propertyName.size() >= 1 && data.propertyName.size() <= 120 &&
+             data.city is string && data.city.size() >= 1 && data.city.size() <= 60 &&
+             data.locality is string && data.locality.size() >= 1 && data.locality.size() <= 80 &&
+             data.monthlyRentStart is int && data.monthlyRentStart >= 0 && data.monthlyRentStart <= 500000 &&
+             data.coverImageKey is string && data.coverImageKey.size() >= 1 && data.coverImageKey.size() <= 300;
+    }
+
+    function isValidOwnerProfile(data) {
+      return data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.businessName is string && data.businessName.size() >= 2 && data.businessName.size() <= 100 &&
+             data.contactPhone is string && data.contactPhone.size() >= 6 && data.contactPhone.size() <= 20 &&
+             data.city is string && data.city.size() >= 2 && data.city.size() <= 60 &&
+             data.upiId is string && data.upiId.size() >= 3 && data.upiId.size() <= 80 &&
+             data.verificationStatus in ['PENDING', 'VERIFIED', 'REJECTED'];
+    }
+
+    function isValidProperty(data) {
+      return data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 80 &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 120 &&
+             data.city is string && data.city.size() >= 2 && data.city.size() <= 60 &&
+             data.locality is string && data.locality.size() >= 2 && data.locality.size() <= 80 &&
+             data.address is string && data.address.size() >= 4 && data.address.size() <= 240 &&
+             data.genderType in ['BOYS', 'GIRLS', 'COLIVING'] &&
+             data.monthlyRentStart is int && data.monthlyRentStart >= 1000 && data.monthlyRentStart <= 250000 &&
+             data.securityDeposit is int && data.securityDeposit >= 0 && data.securityDeposit <= 500000 &&
+             data.instantBookingEnabled is bool &&
+             data.description is string && data.description.size() >= 5 && data.description.size() <= 1000 &&
+             isValidStringList(data.amenities, 15) &&
+             isValidStringList(data.houseRules, 15) &&
+             isValidStringList(data.imageKeys, 8) &&
+             data.rating is number && data.rating >= 0 && data.rating <= 5 &&
+             data.reviewCount is int && data.reviewCount >= 0 && data.reviewCount <= 100000 &&
+             data.totalBeds is int && data.totalBeds >= 0 && data.totalBeds <= 1000 &&
+             data.availableBeds is int && data.availableBeds >= 0 && data.availableBeds <= data.totalBeds &&
+             data.approvalStatus in ['PENDING_REVIEW', 'APPROVED', 'REJECTED', 'SUSPENDED'];
+    }
+
+    function isValidRoom(data, propertyId) {
+      return data.propertyId == propertyId &&
+             data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.roomNumber is string && data.roomNumber.size() >= 1 && data.roomNumber.size() <= 20 &&
+             data.floor is string && data.floor.size() >= 1 && data.floor.size() <= 20 &&
+             data.sharingType in ['SINGLE', 'TWIN', 'TRIPLE'] &&
+             data.monthlyRent is int && data.monthlyRent >= 1000 && data.monthlyRent <= 250000 &&
+             data.securityDeposit is int && data.securityDeposit >= 0 && data.securityDeposit <= 500000 &&
+             data.totalBeds is int && data.totalBeds >= 1 && data.totalBeds <= 10 &&
+             data.propertyPublished is bool;
+    }
+
+    function isValidBed(data, propertyId) {
+      return data.propertyId == propertyId &&
+             data.roomId is string && isValidId(data.roomId) &&
+             data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.bedCode is string && data.bedCode.size() >= 1 && data.bedCode.size() <= 20 &&
+             data.roomNumber is string && data.roomNumber.size() >= 1 && data.roomNumber.size() <= 20 &&
+             data.sharingType in ['SINGLE', 'TWIN', 'TRIPLE'] &&
+             data.monthlyRent is int && data.monthlyRent >= 1000 && data.monthlyRent <= 250000 &&
+             data.securityDeposit is int && data.securityDeposit >= 0 && data.securityDeposit <= 500000 &&
+             data.status in ['AVAILABLE', 'RESERVED', 'OCCUPIED', 'MAINTENANCE'] &&
+             data.propertyPublished is bool &&
+             (!('reservedByUserId' in data) || data.reservedByUserId == null || (data.reservedByUserId is string && data.reservedByUserId.size() <= 128)) &&
+             (!('reservationExpiresAt' in data) || data.reservationExpiresAt == null || isValidFutureOrNowTimestamp(data.reservationExpiresAt));
+    }
+
+    function isValidBooking(data) {
+      return data.propertyId is string && isValidId(data.propertyId) &&
+             data.propertyName is string && data.propertyName.size() >= 1 && data.propertyName.size() <= 120 &&
+             data.city is string && data.city.size() >= 1 && data.city.size() <= 60 &&
+             data.locality is string && data.locality.size() >= 1 && data.locality.size() <= 80 &&
+             data.roomId is string && isValidId(data.roomId) &&
+             data.roomNumber is string && data.roomNumber.size() >= 1 && data.roomNumber.size() <= 20 &&
+             data.bedId is string && isValidId(data.bedId) &&
+             data.bedCode is string && data.bedCode.size() >= 1 && data.bedCode.size() <= 20 &&
+             data.tenantId is string && data.tenantId.size() >= 1 && data.tenantId.size() <= 128 &&
+             data.tenantName is string && data.tenantName.size() >= 1 && data.tenantName.size() <= 80 &&
+             data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.bookingType in ['INSTANT', 'APPROVAL'] &&
+             data.status in ['PENDING_APPROVAL', 'APPROVED_AWAITING_PAYMENT', 'AWAITING_PAYMENT', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'EXPIRED'] &&
+             data.moveInDate is string && data.moveInDate.size() >= 4 && data.moveInDate.size() <= 30 &&
+             data.monthlyRent is int && data.monthlyRent >= 1000 && data.monthlyRent <= 250000 &&
+             data.securityDeposit is int && data.securityDeposit >= 0 && data.securityDeposit <= 500000 &&
+             data.totalAmount is int && data.totalAmount >= 1000 && data.totalAmount <= 750000 &&
+             data.commissionAmount is int && data.commissionAmount >= 0 && data.commissionAmount <= 250000 &&
+             (!('reservationExpiresAt' in data) || data.reservationExpiresAt == null || isValidFutureOrNowTimestamp(data.reservationExpiresAt)) &&
+             (!('paymentId' in data) || data.paymentId == null || isValidId(data.paymentId));
+    }
+
+    function isValidPayment(data) {
+      return data.bookingId is string && isValidId(data.bookingId) &&
+             data.propertyId is string && isValidId(data.propertyId) &&
+             data.tenantId is string && data.tenantId.size() >= 1 && data.tenantId.size() <= 128 &&
+             data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.amount is int && data.amount >= 1000 && data.amount <= 750000 &&
+             data.method is string && data.method.size() >= 2 && data.method.size() <= 40 &&
+             data.razorpayOrderId is string && data.razorpayOrderId.size() >= 4 && data.razorpayOrderId.size() <= 80 &&
+             data.razorpayPaymentId is string && data.razorpayPaymentId.size() >= 4 && data.razorpayPaymentId.size() <= 80 &&
+             data.verificationStatus in ['VERIFIED', 'REFUNDED'];
+    }
+
+    function isValidCommissionRecord(data) {
+      return data.bookingId is string && isValidId(data.bookingId) &&
+             data.paymentId is string && isValidId(data.paymentId) &&
+             data.propertyId is string && isValidId(data.propertyId) &&
+             data.propertyName is string && data.propertyName.size() >= 1 && data.propertyName.size() <= 120 &&
+             data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.tenantId is string && data.tenantId.size() >= 1 && data.tenantId.size() <= 128 &&
+             data.grossAmount is int && data.grossAmount >= 1000 && data.grossAmount <= 750000 &&
+             data.commissionPercent is int && data.commissionPercent >= 0 && data.commissionPercent <= 50 &&
+             data.commissionAmount is int && data.commissionAmount >= 0 && data.commissionAmount <= 375000 &&
+             data.ownerNetAmount is int && data.ownerNetAmount >= 0 && data.ownerNetAmount <= 750000 &&
+             data.settlementStatus in ['UNSETTLED', 'REQUESTED', 'SETTLED'];
+    }
+
+    function isValidPayoutRecord(data) {
+      return data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 80 &&
+             data.upiId is string && data.upiId.size() >= 3 && data.upiId.size() <= 80 &&
+             data.amount is int && data.amount >= 1 && data.amount <= 5000000 &&
+             data.status in ['REQUESTED', 'PROCESSING', 'SETTLED', 'REJECTED'] &&
+             (!('referenceNote' in data) || data.referenceNote == null || (data.referenceNote is string && data.referenceNote.size() <= 120));
+    }
+
+    function isValidReview(data, propertyId) {
+      return data.propertyId == propertyId &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 80 &&
+             data.rating is int && data.rating >= 1 && data.rating <= 5 &&
+             data.comment is string && data.comment.size() >= 2 && data.comment.size() <= 500 &&
+             data.propertyPublished is bool;
+    }
+
+    function isValidNotification(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.senderId is string && data.senderId.size() >= 1 && data.senderId.size() <= 128 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 100 &&
+             data.message is string && data.message.size() >= 1 && data.message.size() <= 300 &&
+             data.type in ['BOOKING', 'PAYMENT', 'APPROVAL', 'SYSTEM'] &&
+             data.read is bool &&
+             (!('relatedId' in data) || data.relatedId == null || (data.relatedId is string && data.relatedId.size() <= 128));
+    }
+
+    function isValidPlatformConfig(data) {
+      return data.commissionPercent is int && data.commissionPercent >= 0 && data.commissionPercent <= 50 &&
+             data.reservationMinutes is int && data.reservationMinutes >= 1 && data.reservationMinutes <= 120;
+    }
+
+    // --- Collection Rules ---
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && (request.auth.uid == adminUid || isAdmin());
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+
+      allow create: if isSignedIn() && isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'email', 'activeRole', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'email', 'phone', 'city', 'activeRole', 'photoUrl', 'createdAt', 'updatedAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() && isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) && (
+                         isAdmin() ||
+                         (request.auth.uid == userId &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phone', 'city', 'activeRole', 'photoUrl', 'updatedAt']))
+                       );
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+
+      match /favorites/{propertyId} {
+        allow get: if isSignedIn() && isValidId(propertyId) && request.auth.uid == userId;
+        allow list: if isSignedIn() && request.auth.uid == userId;
+        allow create: if isSignedIn() && isValidId(propertyId) &&
+                         request.auth.uid == userId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().propertyId == propertyId &&
+                         incoming().keys().hasAll(['userId', 'propertyId', 'propertyName', 'city', 'locality', 'monthlyRentStart', 'coverImageKey', 'createdAt']) &&
+                         incoming().keys().hasOnly(['userId', 'propertyId', 'propertyName', 'city', 'locality', 'monthlyRentStart', 'coverImageKey', 'createdAt']) &&
+                         isValidTimestamp(incoming().createdAt) &&
+                         isValidFavorite(incoming());
+        allow delete: if isSignedIn() && isValidId(propertyId) && request.auth.uid == userId;
+        allow update: if false;
+      }
+    }
+
+    match /ownerProfiles/{ownerId} {
+      allow get: if isSignedIn() && isValidId(ownerId) && (request.auth.uid == ownerId || isAdmin());
+      allow list: if isAdmin() || (isSignedIn() && existing().ownerId == request.auth.uid);
+
+      allow create: if isSignedIn() && isValidId(ownerId) &&
+                       request.auth.uid == ownerId &&
+                       incoming().ownerId == request.auth.uid &&
+                       incoming().verificationStatus == 'PENDING' &&
+                       incoming().keys().hasAll(['ownerId', 'businessName', 'contactPhone', 'city', 'upiId', 'verificationStatus', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['ownerId', 'businessName', 'contactPhone', 'city', 'upiId', 'verificationStatus', 'createdAt', 'updatedAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidOwnerProfile(incoming());
+
+      allow update: if isSignedIn() && isValidId(ownerId) &&
+                       isValidOwnerProfile(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) && (
+                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['verificationStatus', 'updatedAt'])) ||
+                         (request.auth.uid == ownerId &&
+                          incoming().verificationStatus == existing().verificationStatus &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['businessName', 'contactPhone', 'city', 'upiId', 'updatedAt']))
+                       );
+
+      allow delete: if isAdmin();
+    }
+
+    match /properties/{propertyId} {
+      allow get: if isSignedIn() && isValidId(propertyId) &&
+                    (existing().approvalStatus == 'APPROVED' || existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() &&
+                    (existing().approvalStatus == 'APPROVED' || existing().ownerId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && isValidId(propertyId) &&
+                       incoming().ownerId == request.auth.uid &&
+                       (incoming().approvalStatus == 'PENDING_REVIEW' || (isAdmin() && incoming().approvalStatus == 'APPROVED')) &&
+                       incoming().keys().hasAll(['ownerId', 'ownerName', 'name', 'city', 'locality', 'address', 'genderType', 'monthlyRentStart', 'securityDeposit', 'instantBookingEnabled', 'description', 'amenities', 'houseRules', 'imageKeys', 'rating', 'reviewCount', 'totalBeds', 'availableBeds', 'approvalStatus', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['ownerId', 'ownerName', 'name', 'city', 'locality', 'address', 'genderType', 'monthlyRentStart', 'securityDeposit', 'instantBookingEnabled', 'description', 'amenities', 'houseRules', 'imageKeys', 'rating', 'reviewCount', 'totalBeds', 'availableBeds', 'approvalStatus', 'createdAt', 'updatedAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidProperty(incoming());
+
+      allow update: if isSignedIn() && isValidId(propertyId) &&
+                       isValidProperty(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) && (
+                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['approvalStatus', 'updatedAt'])) ||
+                         (request.auth.uid == existing().ownerId &&
+                          incoming().approvalStatus == existing().approvalStatus &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'city', 'locality', 'address', 'genderType', 'monthlyRentStart', 'securityDeposit', 'instantBookingEnabled', 'description', 'amenities', 'houseRules', 'imageKeys', 'totalBeds', 'availableBeds', 'updatedAt'])) ||
+                         (existing().approvalStatus == 'APPROVED' &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['availableBeds', 'updatedAt']) &&
+                          (incoming().availableBeds == existing().availableBeds - 1 || incoming().availableBeds == existing().availableBeds + 1)) ||
+                         (existing().approvalStatus == 'APPROVED' &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'reviewCount', 'updatedAt']))
+                       );
+
+      allow delete: if isSignedIn() && isValidId(propertyId) && (request.auth.uid == existing().ownerId || isAdmin());
+
+      match /rooms/{roomId} {
+        allow get: if isSignedIn() && isValidId(roomId) &&
+                      (existing().propertyPublished == true || existing().ownerId == request.auth.uid || isAdmin());
+        allow list: if isSignedIn() &&
+                      (existing().propertyPublished == true || existing().ownerId == request.auth.uid || isAdmin());
+
+        allow create: if isSignedIn() && isValidId(roomId) &&
+                         incoming().ownerId == request.auth.uid &&
+                         (incoming().propertyPublished == false || isAdmin()) &&
+                         incoming().keys().hasAll(['propertyId', 'ownerId', 'roomNumber', 'floor', 'sharingType', 'monthlyRent', 'securityDeposit', 'totalBeds', 'propertyPublished', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['propertyId', 'ownerId', 'roomNumber', 'floor', 'sharingType', 'monthlyRent', 'securityDeposit', 'totalBeds', 'propertyPublished', 'createdAt', 'updatedAt']) &&
+                         isValidTimestamp(incoming().createdAt) &&
+                         isValidTimestamp(incoming().updatedAt) &&
+                         isValidRoom(incoming(), propertyId) &&
+                         getAfter(/databases/$(database)/documents/properties/$(propertyId)).data.ownerId == request.auth.uid;
+
+        allow update: if isSignedIn() && isValidId(roomId) &&
+                         isValidRoom(incoming(), propertyId) &&
+                         incoming().ownerId == existing().ownerId &&
+                         incoming().propertyId == existing().propertyId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidTimestamp(incoming().updatedAt) && (
+                           (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['propertyPublished', 'updatedAt'])) ||
+                           (request.auth.uid == existing().ownerId &&
+                            incoming().propertyPublished == existing().propertyPublished &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['roomNumber', 'floor', 'sharingType', 'monthlyRent', 'securityDeposit', 'totalBeds', 'updatedAt']))
+                         );
+
+        allow delete: if isSignedIn() && isValidId(roomId) && (request.auth.uid == existing().ownerId || isAdmin());
+      }
+
+      match /beds/{bedId} {
+        allow get: if isSignedIn() && isValidId(bedId) &&
+                      (existing().propertyPublished == true || existing().ownerId == request.auth.uid || isAdmin());
+        allow list: if isSignedIn() &&
+                      (existing().propertyPublished == true || existing().ownerId == request.auth.uid || isAdmin());
+
+        allow create: if isSignedIn() && isValidId(bedId) &&
+                         incoming().ownerId == request.auth.uid &&
+                         (incoming().propertyPublished == false || isAdmin()) &&
+                         incoming().keys().hasAll(['propertyId', 'roomId', 'ownerId', 'bedCode', 'roomNumber', 'sharingType', 'monthlyRent', 'securityDeposit', 'status', 'propertyPublished', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['propertyId', 'roomId', 'ownerId', 'bedCode', 'roomNumber', 'sharingType', 'monthlyRent', 'securityDeposit', 'status', 'reservedByUserId', 'reservationExpiresAt', 'propertyPublished', 'createdAt', 'updatedAt']) &&
+                         isValidTimestamp(incoming().createdAt) &&
+                         isValidTimestamp(incoming().updatedAt) &&
+                         isValidBed(incoming(), propertyId) &&
+                         getAfter(/databases/$(database)/documents/properties/$(propertyId)).data.ownerId == request.auth.uid;
+
+        allow update: if isSignedIn() && isValidId(bedId) &&
+                         isValidBed(incoming(), propertyId) &&
+                         incoming().ownerId == existing().ownerId &&
+                         incoming().propertyId == existing().propertyId &&
+                         incoming().roomId == existing().roomId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidTimestamp(incoming().updatedAt) && (
+                           (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['propertyPublished', 'status', 'reservedByUserId', 'reservationExpiresAt', 'updatedAt'])) ||
+                           (request.auth.uid == existing().ownerId &&
+                            incoming().propertyPublished == existing().propertyPublished &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['bedCode', 'monthlyRent', 'securityDeposit', 'status', 'reservedByUserId', 'reservationExpiresAt', 'updatedAt'])) ||
+                           // Tenant reserves an AVAILABLE (or expired RESERVED) bed
+                           (existing().propertyPublished == true &&
+                            (existing().status == 'AVAILABLE' || (existing().status == 'RESERVED' && 'reservationExpiresAt' in existing() && existing().reservationExpiresAt != null && existing().reservationExpiresAt < request.time)) &&
+                            incoming().status == 'RESERVED' &&
+                            incoming().reservedByUserId == request.auth.uid &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reservedByUserId', 'reservationExpiresAt', 'updatedAt'])) ||
+                           // Tenant confirms (OCCUPIED) or releases (AVAILABLE) their own reserved bed
+                           (existing().propertyPublished == true &&
+                            existing().status == 'RESERVED' &&
+                            existing().reservedByUserId == request.auth.uid &&
+                            incoming().status in ['OCCUPIED', 'AVAILABLE'] &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reservedByUserId', 'reservationExpiresAt', 'updatedAt']))
+                         );
+
+        allow delete: if isSignedIn() && isValidId(bedId) && (request.auth.uid == existing().ownerId || isAdmin());
+      }
+
+      match /reviews/{reviewId} {
+        allow get: if isSignedIn() && isValidId(reviewId) &&
+                      (existing().propertyPublished == true || existing().userId == request.auth.uid || isAdmin());
+        allow list: if isSignedIn() &&
+                      (existing().propertyPublished == true || existing().userId == request.auth.uid || isAdmin());
+
+        allow create: if isSignedIn() && isValidId(reviewId) &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll(['propertyId', 'userId', 'userName', 'rating', 'comment', 'propertyPublished', 'createdAt']) &&
+                         incoming().keys().hasOnly(['propertyId', 'userId', 'userName', 'rating', 'comment', 'propertyPublished', 'createdAt']) &&
+                         isValidTimestamp(incoming().createdAt) &&
+                         isValidReview(incoming(), propertyId) &&
+                         exists(/databases/$(database)/documents/properties/$(propertyId));
+
+        allow update: if false;
+        allow delete: if isSignedIn() && isValidId(reviewId) && (request.auth.uid == existing().userId || isAdmin());
+      }
+    }
+
+    match /bookings/{bookingId} {
+      allow get: if isSignedIn() && isValidId(bookingId) &&
+                    (existing().tenantId == request.auth.uid || existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() &&
+                    (existing().tenantId == request.auth.uid || existing().ownerId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && isValidId(bookingId) &&
+                       incoming().tenantId == request.auth.uid &&
+                       ((incoming().bookingType == 'APPROVAL' && incoming().status == 'PENDING_APPROVAL') ||
+                        (incoming().bookingType == 'INSTANT' && incoming().status == 'AWAITING_PAYMENT')) &&
+                       incoming().keys().hasAll(['propertyId', 'propertyName', 'city', 'locality', 'roomId', 'roomNumber', 'bedId', 'bedCode', 'tenantId', 'tenantName', 'ownerId', 'bookingType', 'status', 'moveInDate', 'monthlyRent', 'securityDeposit', 'totalAmount', 'commissionAmount', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['propertyId', 'propertyName', 'city', 'locality', 'roomId', 'roomNumber', 'bedId', 'bedCode', 'tenantId', 'tenantName', 'ownerId', 'bookingType', 'status', 'moveInDate', 'monthlyRent', 'securityDeposit', 'totalAmount', 'commissionAmount', 'reservationExpiresAt', 'paymentId', 'createdAt', 'updatedAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidBooking(incoming()) &&
+                       exists(/databases/$(database)/documents/properties/$(incoming().propertyId));
+
+      allow update: if isSignedIn() && isValidId(bookingId) &&
+                       isValidBooking(incoming()) &&
+                       incoming().tenantId == existing().tenantId &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().propertyId == existing().propertyId &&
+                       incoming().bedId == existing().bedId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) && (
+                         isAdmin() ||
+                         // Terminal states cannot be mutated by non-admins
+                         (existing().status != 'REJECTED' && existing().status != 'CANCELLED' && existing().status != 'EXPIRED' && (
+                           // Owner approves or rejects a PENDING_APPROVAL booking
+                           (request.auth.uid == existing().ownerId &&
+                            existing().status == 'PENDING_APPROVAL' &&
+                            incoming().status in ['APPROVED_AWAITING_PAYMENT', 'REJECTED'] &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reservationExpiresAt', 'updatedAt'])) ||
+                           // Tenant completes payment before reservation expires
+                           (request.auth.uid == existing().tenantId &&
+                            existing().status in ['AWAITING_PAYMENT', 'APPROVED_AWAITING_PAYMENT'] &&
+                            incoming().status == 'CONFIRMED' &&
+                            'paymentId' in incoming() && incoming().paymentId is string &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paymentId', 'updatedAt'])) ||
+                           // Tenant cancels or marks expired before confirmation
+                           (request.auth.uid == existing().tenantId &&
+                            existing().status in ['PENDING_APPROVAL', 'AWAITING_PAYMENT', 'APPROVED_AWAITING_PAYMENT'] &&
+                            incoming().status in ['CANCELLED', 'EXPIRED'] &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+                         ))
+                       );
+
+      allow delete: if isAdmin();
+    }
+
+    match /payments/{paymentId} {
+      allow get: if isSignedIn() && isValidId(paymentId) &&
+                    (existing().tenantId == request.auth.uid || existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() &&
+                    (existing().tenantId == request.auth.uid || existing().ownerId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && isValidId(paymentId) &&
+                       incoming().tenantId == request.auth.uid &&
+                       incoming().verificationStatus == 'VERIFIED' &&
+                       incoming().keys().hasAll(['bookingId', 'propertyId', 'tenantId', 'ownerId', 'amount', 'method', 'razorpayOrderId', 'razorpayPaymentId', 'verificationStatus', 'createdAt']) &&
+                       incoming().keys().hasOnly(['bookingId', 'propertyId', 'tenantId', 'ownerId', 'amount', 'method', 'razorpayOrderId', 'razorpayPaymentId', 'verificationStatus', 'createdAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidPayment(incoming()) &&
+                       existsAfter(/databases/$(database)/documents/bookings/$(incoming().bookingId));
+
+      allow update: if isSignedIn() && isValidId(paymentId) &&
+                       isAdmin() &&
+                       isValidPayment(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['verificationStatus']);
+      allow delete: if false;
+    }
+
+    match /commissionRecords/{recordId} {
+      allow get: if isSignedIn() && isValidId(recordId) &&
+                    (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() &&
+                    (existing().ownerId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && isValidId(recordId) &&
+                       incoming().tenantId == request.auth.uid &&
+                       incoming().settlementStatus == 'UNSETTLED' &&
+                       incoming().keys().hasAll(['bookingId', 'paymentId', 'propertyId', 'propertyName', 'ownerId', 'tenantId', 'grossAmount', 'commissionPercent', 'commissionAmount', 'ownerNetAmount', 'settlementStatus', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['bookingId', 'paymentId', 'propertyId', 'propertyName', 'ownerId', 'tenantId', 'grossAmount', 'commissionPercent', 'commissionAmount', 'ownerNetAmount', 'settlementStatus', 'createdAt', 'updatedAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidCommissionRecord(incoming()) &&
+                       existsAfter(/databases/$(database)/documents/payments/$(incoming().paymentId));
+
+      allow update: if isSignedIn() && isValidId(recordId) &&
+                       isValidCommissionRecord(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) && (
+                         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['settlementStatus', 'updatedAt'])) ||
+                         (request.auth.uid == existing().ownerId &&
+                          existing().settlementStatus == 'UNSETTLED' &&
+                          incoming().settlementStatus == 'REQUESTED' &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['settlementStatus', 'updatedAt']))
+                       );
+
+      allow delete: if false;
+    }
+
+    match /payoutRecords/{payoutId} {
+      allow get: if isSignedIn() && isValidId(payoutId) &&
+                    (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() &&
+                    (existing().ownerId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && isValidId(payoutId) &&
+                       incoming().ownerId == request.auth.uid &&
+                       incoming().status == 'REQUESTED' &&
+                       incoming().keys().hasAll(['ownerId', 'ownerName', 'upiId', 'amount', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['ownerId', 'ownerName', 'upiId', 'amount', 'status', 'referenceNote', 'createdAt', 'updatedAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidPayoutRecord(incoming());
+
+      allow update: if isSignedIn() && isValidId(payoutId) &&
+                       isAdmin() &&
+                       isValidPayoutRecord(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'referenceNote', 'updatedAt']);
+
+      allow delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn() && isValidId(notificationId) &&
+                    (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() &&
+                    (existing().userId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && isValidId(notificationId) &&
+                       incoming().senderId == request.auth.uid &&
+                       incoming().read == false &&
+                       incoming().keys().hasAll(['userId', 'senderId', 'title', 'message', 'type', 'read', 'createdAt']) &&
+                       incoming().keys().hasOnly(['userId', 'senderId', 'title', 'message', 'type', 'read', 'relatedId', 'createdAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidNotification(incoming());
+
+      allow update: if isSignedIn() && isValidId(notificationId) &&
+                       request.auth.uid == existing().userId &&
+                       isValidNotification(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+
+      allow delete: if isSignedIn() && isValidId(notificationId) &&
+                       (request.auth.uid == existing().userId || isAdmin());
+    }
+
+    match /platformConfig/{configId} {
+      allow get: if isSignedIn() && isValidId(configId);
+      allow list: if isAdmin();
+      allow create, update: if isSignedIn() && isValidId(configId) &&
+                               isAdmin() &&
+                               incoming().keys().hasAll(['commissionPercent', 'reservationMinutes', 'updatedAt']) &&
+                               incoming().keys().hasOnly(['commissionPercent', 'reservationMinutes', 'updatedAt']) &&
+                               isValidTimestamp(incoming().updatedAt) &&
+                               isValidPlatformConfig(incoming());
+      allow delete: if false;
+    }
+  }
+}

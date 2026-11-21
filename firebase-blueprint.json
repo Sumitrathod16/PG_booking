@@ -1,0 +1,304 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user profile and active marketplace mode (Tenant or Owner).",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "city": { "type": "string" },
+        "activeRole": { "type": "string", "enum": ["TENANT", "OWNER"] },
+        "photoUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()" }
+      },
+      "required": ["userId", "displayName", "email", "activeRole", "createdAt", "updatedAt"]
+    },
+    "FavoriteProperty": {
+      "title": "FavoriteProperty",
+      "description": "Saved PG property bookmark under user subcollection.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "propertyName": { "type": "string" },
+        "city": { "type": "string" },
+        "locality": { "type": "string" },
+        "monthlyRentStart": { "type": "integer" },
+        "coverImageKey": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "propertyId", "propertyName", "city", "locality", "monthlyRentStart", "coverImageKey", "createdAt"]
+    },
+    "OwnerProfile": {
+      "title": "OwnerProfile",
+      "description": "PG Owner KYC, contact, payout handle, and admin verification status.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "businessName": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "city": { "type": "string" },
+        "upiId": { "type": "string" },
+        "verificationStatus": { "type": "string", "enum": ["PENDING", "VERIFIED", "REJECTED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "businessName", "contactPhone", "city", "upiId", "verificationStatus", "createdAt", "updatedAt"]
+    },
+    "Property": {
+      "title": "Property",
+      "description": "Paying guest accommodation property listing with amenities, rules, images, and approval status.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "name": { "type": "string" },
+        "city": { "type": "string" },
+        "locality": { "type": "string" },
+        "address": { "type": "string" },
+        "genderType": { "type": "string", "enum": ["BOYS", "GIRLS", "COLIVING"] },
+        "monthlyRentStart": { "type": "integer" },
+        "securityDeposit": { "type": "integer" },
+        "instantBookingEnabled": { "type": "boolean" },
+        "description": { "type": "string" },
+        "amenities": { "type": "array" },
+        "houseRules": { "type": "array" },
+        "imageKeys": { "type": "array" },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "integer" },
+        "totalBeds": { "type": "integer" },
+        "availableBeds": { "type": "integer" },
+        "approvalStatus": { "type": "string", "enum": ["PENDING_REVIEW", "APPROVED", "REJECTED", "SUSPENDED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "ownerName", "name", "city", "locality", "address", "genderType", "monthlyRentStart", "securityDeposit", "instantBookingEnabled", "description", "amenities", "houseRules", "imageKeys", "rating", "reviewCount", "totalBeds", "availableBeds", "approvalStatus", "createdAt", "updatedAt"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "Room unit inside a PG property.",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "roomNumber": { "type": "string" },
+        "floor": { "type": "string" },
+        "sharingType": { "type": "string", "enum": ["SINGLE", "TWIN", "TRIPLE"] },
+        "monthlyRent": { "type": "integer" },
+        "securityDeposit": { "type": "integer" },
+        "totalBeds": { "type": "integer" },
+        "propertyPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["propertyId", "ownerId", "roomNumber", "floor", "sharingType", "monthlyRent", "securityDeposit", "totalBeds", "propertyPublished", "createdAt", "updatedAt"]
+    },
+    "Bed": {
+      "title": "Bed",
+      "description": "Individual bed inventory unit with atomic reservation locking.",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string" },
+        "roomId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "bedCode": { "type": "string" },
+        "roomNumber": { "type": "string" },
+        "sharingType": { "type": "string", "enum": ["SINGLE", "TWIN", "TRIPLE"] },
+        "monthlyRent": { "type": "integer" },
+        "securityDeposit": { "type": "integer" },
+        "status": { "type": "string", "enum": ["AVAILABLE", "RESERVED", "OCCUPIED", "MAINTENANCE"] },
+        "reservedByUserId": { "type": "string" },
+        "reservationExpiresAt": { "type": "string", "format": "date-time" },
+        "propertyPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["propertyId", "roomId", "ownerId", "bedCode", "roomNumber", "sharingType", "monthlyRent", "securityDeposit", "status", "propertyPublished", "createdAt", "updatedAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Tenant bed booking supporting instant and owner-approval workflows.",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string" },
+        "propertyName": { "type": "string" },
+        "city": { "type": "string" },
+        "locality": { "type": "string" },
+        "roomId": { "type": "string" },
+        "roomNumber": { "type": "string" },
+        "bedId": { "type": "string" },
+        "bedCode": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "tenantName": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "bookingType": { "type": "string", "enum": ["INSTANT", "APPROVAL"] },
+        "status": { "type": "string", "enum": ["PENDING_APPROVAL", "APPROVED_AWAITING_PAYMENT", "AWAITING_PAYMENT", "CONFIRMED", "REJECTED", "CANCELLED", "EXPIRED"] },
+        "moveInDate": { "type": "string" },
+        "monthlyRent": { "type": "integer" },
+        "securityDeposit": { "type": "integer" },
+        "totalAmount": { "type": "integer" },
+        "commissionAmount": { "type": "integer" },
+        "reservationExpiresAt": { "type": "string", "format": "date-time" },
+        "paymentId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["propertyId", "propertyName", "city", "locality", "roomId", "roomNumber", "bedId", "bedCode", "tenantId", "tenantName", "ownerId", "bookingType", "status", "moveInDate", "monthlyRent", "securityDeposit", "totalAmount", "commissionAmount", "createdAt", "updatedAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Verified booking payment transaction record.",
+      "type": "object",
+      "properties": {
+        "bookingId": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "amount": { "type": "integer" },
+        "method": { "type": "string" },
+        "razorpayOrderId": { "type": "string" },
+        "razorpayPaymentId": { "type": "string" },
+        "verificationStatus": { "type": "string", "enum": ["VERIFIED", "REFUNDED"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bookingId", "propertyId", "tenantId", "ownerId", "amount", "method", "razorpayOrderId", "razorpayPaymentId", "verificationStatus", "createdAt"]
+    },
+    "CommissionRecord": {
+      "title": "CommissionRecord",
+      "description": "Marketplace platform commission ledger entry per confirmed payment.",
+      "type": "object",
+      "properties": {
+        "bookingId": { "type": "string" },
+        "paymentId": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "propertyName": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "grossAmount": { "type": "integer" },
+        "commissionPercent": { "type": "integer" },
+        "commissionAmount": { "type": "integer" },
+        "ownerNetAmount": { "type": "integer" },
+        "settlementStatus": { "type": "string", "enum": ["UNSETTLED", "REQUESTED", "SETTLED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bookingId", "paymentId", "propertyId", "propertyName", "ownerId", "tenantId", "grossAmount", "commissionPercent", "commissionAmount", "ownerNetAmount", "settlementStatus", "createdAt", "updatedAt"]
+    },
+    "PayoutRecord": {
+      "title": "PayoutRecord",
+      "description": "Owner settlement payout request and disbursement tracking.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "upiId": { "type": "string" },
+        "amount": { "type": "integer" },
+        "status": { "type": "string", "enum": ["REQUESTED", "PROCESSING", "SETTLED", "REJECTED"] },
+        "referenceNote": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "ownerName", "upiId", "amount", "status", "createdAt", "updatedAt"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Tenant review and rating for a PG property.",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "rating": { "type": "integer" },
+        "comment": { "type": "string" },
+        "propertyPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["propertyId", "userId", "userName", "rating", "comment", "propertyPublished", "createdAt"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "In-app booking, approval, and payment status notifications.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["BOOKING", "PAYMENT", "APPROVAL", "SYSTEM"] },
+        "read": { "type": "boolean" },
+        "relatedId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "senderId", "title", "message", "type", "read", "createdAt"]
+    },
+    "PlatformConfig": {
+      "title": "PlatformConfig",
+      "description": "Admin-configurable marketplace commission and reservation expiry settings.",
+      "type": "object",
+      "properties": {
+        "commissionPercent": { "type": "integer" },
+        "reservationMinutes": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["commissionPercent", "reservationMinutes", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles isolated by UID."
+    },
+    "/users/{userId}/favorites/{propertyId}": {
+      "schema": { "$ref": "#/entities/FavoriteProperty" },
+      "description": "Saved PG properties for a user."
+    },
+    "/ownerProfiles/{ownerId}": {
+      "schema": { "$ref": "#/entities/OwnerProfile" },
+      "description": "Owner KYC and payout verification profiles."
+    },
+    "/properties/{propertyId}": {
+      "schema": { "$ref": "#/entities/Property" },
+      "description": "PG property listings."
+    },
+    "/properties/{propertyId}/rooms/{roomId}": {
+      "schema": { "$ref": "#/entities/Room" },
+      "description": "Rooms belonging to a property."
+    },
+    "/properties/{propertyId}/beds/{bedId}": {
+      "schema": { "$ref": "#/entities/Bed" },
+      "description": "Beds belonging to a property."
+    },
+    "/properties/{propertyId}/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/Review" },
+      "description": "Reviews for a property."
+    },
+    "/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/Booking" },
+      "description": "Bookings between tenants and owners."
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Verified payment ledger records."
+    },
+    "/commissionRecords/{recordId}": {
+      "schema": { "$ref": "#/entities/CommissionRecord" },
+      "description": "Platform commission ledger records."
+    },
+    "/payoutRecords/{payoutId}": {
+      "schema": { "$ref": "#/entities/PayoutRecord" },
+      "description": "Owner payout requests and settlements."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/NotificationItem" },
+      "description": "User notifications."
+    },
+    "/platformConfig/{configId}": {
+      "schema": { "$ref": "#/entities/PlatformConfig" },
+      "description": "Platform-wide commission and reservation settings."
+    }
+  }
+}

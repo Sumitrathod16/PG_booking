@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">PG Booking</string>
+    <string name="tagline">Paying guest stays, verified &amp; effortless</string>
+    <string name="sign_in_google">Sign in with Google</string>
+    <string name="nav_explore">Explore</string>
+    <string name="nav_saved">Saved</string>
+    <string name="nav_bookings">Bookings</string>
+    <string name="nav_profile">Profile</string>
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_properties">Properties</string>
+    <string name="nav_earnings">Earnings</string>
+    <string name="checkout_test_notice">Test Mode Checkout — Verified server-side simulation</string>
+</resources>
